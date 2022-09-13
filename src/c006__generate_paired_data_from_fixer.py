@@ -10,7 +10,7 @@ from multiprocessing import Pool
 
 
 #BIFI version - uses critic to verify
-def generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, out_dir):
+def generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, out_dir, curriculum, beam):
     #Get new paired data
     train_data = {'good': [], 'bad': [], 'id': []}
     for split in {0,1,2}: #available for training
@@ -28,11 +28,19 @@ def generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, 
             name = '{:02d}-{}-{:03d}'.format(split, progid, k)
             src  = eval_obj['src']['tok_format'].strip()
             pred = pred_obj['tok_format'].strip()
-            train_data['id'  ].append(name)
-            train_data['good'].append(pred)
-            train_data['bad' ].append(src)
+            if curriculum == "no":
+              train_data['id'  ].append(name)
+              train_data['good'].append(pred)
+              train_data['bad' ].append(src)
+            elif curriculum == "beam":
+              if k in beam:
+                train_data['id'  ].append(name)
+                train_data['good'].append(pred)
+                train_data['bad' ].append(src)
+
     assert len(train_data['good']) == len(train_data['bad']) == len(train_data['id'])
     new_data_size = len(train_data['id'])
+    print ('#curriculum', curriculum)
     print ('#new_data', new_data_size)
     os.system(f'mkdir -p {out_dir}_pure')
     with open(f'{out_dir}_pure/train.id', 'w') as fid, \
@@ -172,6 +180,8 @@ parser.add_argument('--round_name')
 parser.add_argument('--out_round_name')
 parser.add_argument('--pred_dir_root', default='')
 parser.add_argument('--BIFI', type=int, default=1)
+parser.add_argument('--curriculum', type=str, default='no')
+parser.add_argument('--beam',nargs="+",default=[])
 args = parser.parse_args()
 
 
@@ -180,10 +190,12 @@ round_dir = data_dir/args.round_name
 pred_dir_root = Path(args.pred_dir_root) if args.pred_dir_root else round_dir/'orig_bad'
 pred_dir_prefix = str(pred_dir_root/'fairseq_preprocess__orig_bad.')
 pred_fname  = 'model-fixer.pred.txt'
+curriculum = args.curriculum
+beam = [int(i) for i in args.beam]
 
 
 out_dir = data_dir/args.out_round_name/'data_paired'
 if args.BIFI:
-    generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, out_dir)
+    generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, out_dir, curriculum, beam)
 else:
     generate_paired_data_from_fixer_preds_for_BT(pred_dir_prefix, pred_fname, out_dir)
