@@ -109,6 +109,7 @@ def parse_fairseq_preds(pred_path):
     #
     preds = defaultdict(list)
     srcs = {}
+    probs = defaultdict(list)
     with open(pred_path, 'r') as f:
         for line in f:
             if line.startswith('H-'):
@@ -118,6 +119,7 @@ def parse_fairseq_preds(pred_path):
                 pred = ' '.join(toks[2:])
                 idx = int(idx[2:])
                 preds[idx].append(pred.strip())
+                probs[idx].append(prob)
             elif line.startswith('S-'):
                 toks = line.split('\t')
                 idx = toks[0]
@@ -127,5 +129,5 @@ def parse_fairseq_preds(pred_path):
     # unshuffle & join
     out = []
     for idx in sorted(preds.keys(), key=lambda x: x):
-        out.append({'src': srcs[idx], 'pred': preds[idx]})
+        out.append({'src': srcs[idx], 'pred': preds[idx], 'prob':probs[idx]})
     return out
