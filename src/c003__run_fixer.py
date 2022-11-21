@@ -11,7 +11,7 @@ args = parser.parse_args()
 args.gpu_ids = args.gpu_ids.split(",")
 
 
-data_dir = Path('data')
+data_dir = Path('/mnt/disks/persist/data')
 round_dir = data_dir/args.round_name
 destdir_root = Path(args.destdir_root) if args.destdir_root else round_dir/'orig_bad'
 
@@ -20,7 +20,7 @@ n_splits = 5  #all the original bad code is split into 5 chunks for faster proce
 
 #Preprocess inputs
 for split in range(n_splits):
-    destdir    = destdir_root/f'fairseq_preprocess__orig_bad.{split}'
+    destdir = destdir_root/f'fairseq_preprocess__orig_bad.{split}'
     if os.path.exists(str(destdir)):
         continue
     fairseq_preprocess(src='bad', tgt='good', workers=10,
@@ -32,7 +32,7 @@ for split in range(n_splits):
 
 #Run fixer
 model_dir  = round_dir/'model-fixer'
-model_path = model_dir/'checkpoint.pt'
+model_path = model_dir/'checkpoint_best.pt'
 gpus = (args.gpu_ids * (n_splits//len(args.gpu_ids) +1))[:n_splits]
 use_Popen = (len(args.gpu_ids) > 1)
 ps = []

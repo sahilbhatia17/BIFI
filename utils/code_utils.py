@@ -11,7 +11,7 @@ sys.path.insert(0, 'utils')
 from code_tokenizer import tokenize
 
 
-vocab_file = 'data/token_vocab.txt'
+vocab_file = '/mnt/disks/persist/data/token_vocab.txt'
 vocab = set([line.split()[0] for line in open(vocab_file)])
 
 def toks2lines(code_toks_raw):

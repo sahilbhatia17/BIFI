@@ -54,6 +54,9 @@ def fairseq_train(GPUs, preprocess_dir, save_dir, logfile, src, tgt, model='tran
                --lr {lr} --stop-min-lr {min_lr} \
                --max-tokens {max_tokens} \
                --update-freq {update_freq} \
+               --tpu \
+               --keep-best-checkpoints 1 \
+               --num-batch-buckets 3 \
                --max-epoch {max_epoch} --save-interval {save_interval} --save-dir {save_dir} "
         if user_dir is not None:
             cmd += f'--user-dir {user_dir} '
@@ -89,6 +92,7 @@ def fairseq_generate(GPUs, preprocess_dir, checkpoint_path, results_path, src, t
         --max-len-a {max_len_a} \
         --max-len-b {max_len_b} \
         --nbest {nbest} \
+        --tpu \
         --beam {beam} "
     if remove_bpe is not None:
         cmd += f'--remove-bpe {remove_bpe} '

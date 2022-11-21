@@ -32,6 +32,8 @@ def eval_one_pred_obj(pred_obj):
     ret_obj['src']  = {'tok_format': src, 'string_format': src_code}
     #Get string_format from predicted code toks
     ret_obj['pred'] = []
+    ret_obj['prob'] = pred_obj['prob']
+    #print(len(ret_obj['prob']))
     for pred in pred_obj['pred']:
         pred_code = code_toks_to_code_string(pred, anonymize_dict) #this is string_format
         orig_err_obj = pred_obj['orig_err_obj']
@@ -45,6 +47,7 @@ def eval_one_pred_obj(pred_obj):
                                   'string_format': pred_code,
                                   'err_obj': res,
                                   'diff_metric': diff_metric})
+    
     return ret_obj
 
 def eval_one_split(pred_dir_prefix, split, pred_fname, n_workers=80):
@@ -52,8 +55,9 @@ def eval_one_split(pred_dir_prefix, split, pred_fname, n_workers=80):
     pred_path = Path(f'{pred_dir}/{pred_fname}')
     preds = parse_fairseq_preds(str(pred_path))
     #load progids
-    data_dir = 'data'
+    data_dir = '/mnt/disks/persist/data'
     progids = [l.strip() for l in open(f'{data_dir}/orig_bad_code/orig.{split}.id')]
+    print(pred_path,len(preds), len(progids))
     assert len(preds) == len(progids)
     #load original err_obj
     bads = json.load(open(f'{data_dir}/orig_bad_code/orig.bad.json'))
@@ -79,58 +83,79 @@ def eval_one_split(pred_dir_prefix, split, pred_fname, n_workers=80):
                     'pred': {'tok_format':, 'string_format':, 'err_obj': }
                     }
     '''
+    #print(res)
+    print("*"*50)
     with open(f'{pred_path.parent}/{pred_path.stem}.evaluated.json', 'w') as f:
         json.dump(res, f, indent=2)
 
 def get_test_result(pred_dir_prefix, pred_fname):
     #
-    def collate_eval():
+    def collate_eval(mode):
       success  = []; denom = 0
+      score_correct = []
       success_by_group = defaultdict(list); denom_by_group = defaultdict(int)
       agg_obj = {}
-      for split in {3,4}: #heldout test set
+      if mode == "train":
+        split_val = {0,1,2}
+      else:
+        split_val = {3,4}
+      for split in split_val:#{0,1,2}:#{3,4}: #heldout test set
         print ('split', split)
         pred_dir   = Path(f'{pred_dir_prefix}{split}')
         pred_path  = pred_dir/pred_fname
         pred_eval_path = f'{pred_path.parent}/{pred_path.stem}.evaluated.json'
         eval_objs = json.load(open(pred_eval_path))
+        #print(eval_objs['prob'])
         for eval_obj in eval_objs:
           progid = eval_obj['progid']
+          probs = eval_obj['prob']
           orig_err_type = eval_obj['orig_err_obj']['msg']
           if 'indent' in orig_err_type:
               orig_err_type = 'indentation error'
           denom += 1
           denom_by_group[orig_err_type] += 1
           for k, pred_obj in enumerate(eval_obj['pred']):
+            #print(k)
             pred_err_obj = pred_obj['err_obj']
             diff_metric  = pred_obj['diff_metric']
             if (pred_err_obj == 0) and (0 < diff_metric <= 4):
               name = '{:02d}-{}-{:03d}'.format(split, progid, k)
               success.append(name)
               success_by_group[orig_err_type].append(name)
-      return success, denom, success_by_group, denom_by_group
+              score_correct.append(probs[k])
+      return success, denom, success_by_group, denom_by_group, score_correct
     #
     def print_stats(name_list, _denom):
       top1 = set()
       for name in name_list:
+        #print(name)
         split, progid, k = name.split('-')
         if int(split) in {3,4}: #test set
           if int(k)==0:
             top1.add(f'{split}-{progid}')
+        else:
+          print(name)
       acc = len(top1)/float(_denom)*100
       print ('   acc: {} ({:.1f}%) | denom {}'.format(len(top1), acc, _denom))
       return acc
     #
-    success, denom, success_by_group, denom_by_group = collate_eval()
+    success, denom, success_by_group, denom_by_group, score_correct = collate_eval("test")
+    success_train, _, _, _, score_correct_train = collate_eval("train")
+    #print(len(success), len(score_correct))
     acc_dict = {}
     print ('Total'); acc = print_stats(success, denom); acc_dict['total'] = acc
-    print ('-'*50)
+    #print ('-'*50)
     for err_type in success_by_group:
         print (f'{err_type.capitalize()}')
         acc = print_stats(success_by_group[err_type], denom_by_group[err_type])
         acc_dict[err_type] = acc
     json.dump(acc_dict, open(Path(pred_dir_prefix).parent/'stats.json', 'w'), indent=2)
-
+    with open(Path(pred_dir_prefix).parent/'scores.txt', 'w') as f:
+        for idx,s in enumerate(success_train):
+            f.write(s)
+            f.write("\n")
+            f.write(score_correct_train[idx])
+            f.write("\n") 
 
 
 #################################### main #####################################
@@ -139,14 +164,14 @@ parser.add_argument('--round_name')
 parser.add_argument('--pred_dir_root', default='')
 args = parser.parse_args()
 
-data_dir = Path('data')
+data_dir = Path('/mnt/disks/persist/data')
 round_dir = data_dir/args.round_name
 pred_dir_root = Path(args.pred_dir_root) if args.pred_dir_root else round_dir/'orig_bad'
 pred_dir_prefix = str(pred_dir_root/'fairseq_preprocess__orig_bad.')
 pred_fname  = 'model-fixer.pred.txt'
 
 
-n_splits = 5  #all the original bad code is split into 5 chunks for faster processing
+n_splits = 5#all the original bad code is split into 5 chunks for faster processing
 for split in range(n_splits):
     eval_one_split(pred_dir_prefix, split, pred_fname, n_workers=10)
 

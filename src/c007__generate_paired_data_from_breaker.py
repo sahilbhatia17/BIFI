@@ -49,7 +49,7 @@ def eval_one_split(pred_dir_prefix, split, pred_fname, goods, n_workers=80):
     pred_path = Path(f'{pred_dir}/{pred_fname}')
     preds = parse_fairseq_preds(str(pred_path))
     #load progids
-    data_dir = 'data'
+    data_dir = '/mnt/disks/persist/data'
     progids = [l.strip() for l in open(f'{data_dir}/orig_good_code/orig.{split}.id')]
     assert len(preds) == len(progids)
     for j in range(len(preds)):

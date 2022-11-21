@@ -7,7 +7,7 @@ from tqdm import tqdm
 from copy import deepcopy
 from collections import defaultdict, OrderedDict
 from multiprocessing import Pool
-
+from utils.code_utils import preprocess_unk, code_toks_to_code_string, get_diff_metric
 
 #BIFI version - uses critic to verify
 def generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, out_dir, curriculum, beam):
@@ -21,6 +21,8 @@ def generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, 
       eval_objs = json.load(open(pred_eval_path))
       for eval_obj in eval_objs:
         progid = eval_obj['progid']
+        prob = eval_obj['prob']
+        #print(eval_obj['prob'])
         for k, pred_obj in enumerate(eval_obj['pred']):
           pred_err_obj = pred_obj['err_obj']
           diff_metric  = pred_obj['diff_metric']
@@ -37,27 +39,46 @@ def generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, 
                 train_data['id'  ].append(name)
                 train_data['good'].append(pred)
                 train_data['bad' ].append(src)
+            elif curriculum == "score":
+                if float(prob[k]) >= -0.17692683: #or float(prob[k]) < -0.30727063: #-0.22944843 and float(prob[k]) < -0.17692683 :
+                  train_data['id'  ].append(name)
+                  train_data['good'].append(pred)
+                  train_data['bad' ].append(src)
+          if (pred_err_obj !=0):
+             for k_1, pred_obj_1 in enumerate(eval_obj['pred']):
+                 pred_err_obj_1 = pred_obj_1['err_obj']
+                 diff_metric_1  = pred_obj_1['diff_metric']
+                 if (pred_err_obj_1 == 0) and (0 < diff_metric_1 <= 4):
+                    name = '{:02d}-{}-{:03d}'.format(split, progid, k)
+                    src_1 = pred_obj['tok_format'].strip()
+                    pred_1 = pred_obj_1['tok_format'].strip()
+                    if  0 < get_diff_metric(src_1,pred_1) <= 4:
+                        train_data['id'  ].append(name)
+                        train_data['good'].append(pred_1)
+                        train_data['bad' ].append(src_1)
+
 
     assert len(train_data['good']) == len(train_data['bad']) == len(train_data['id'])
     new_data_size = len(train_data['id'])
     print ('#curriculum', curriculum)
     print ('#new_data', new_data_size)
-    os.system(f'mkdir -p {out_dir}_pure')
-    with open(f'{out_dir}_pure/train.id', 'w') as fid, \
-         open(f'{out_dir}_pure/train.good', 'w') as fgood, \
-         open(f'{out_dir}_pure/train.bad', 'w') as fbad:
+    os.system(f'mkdir -p {out_dir}_pure_{curriculum}')
+    with open(f'{out_dir}_pure_{curriculum}/train.id', 'w') as fid, \
+         open(f'{out_dir}_pure_{curriculum}/train.good', 'w') as fgood, \
+         open(f'{out_dir}_pure_{curriculum}/train.bad', 'w') as fbad:
       for _idx in tqdm(range(new_data_size)):
         fid.write(train_data['id'][_idx] +'\n')
         fgood.write(train_data['good'][_idx] +'\n')
         fbad.write(train_data['bad'][_idx] +'\n')
     idxs_newdata = list(range(new_data_size))
+    print(len(idxs_newdata))
     #
     #Merge with round0 paired data
     print ('loading round0 data')
     train_data_0 = {'good': [], 'bad': [], 'id': []}
-    train_data_0['bad']  = [line.strip() for line in tqdm(open('data/round0/data_paired/train.bad'))]
-    train_data_0['good'] = [line.strip() for line in tqdm(open('data/round0/data_paired/train.good'))]
-    train_data_0['id']   = [line.strip() for line in tqdm(open('data/round0/data_paired/train.id'))]
+    train_data_0['bad']  = [line.strip() for line in tqdm(open('/mnt/disks/persist/data/round0/data_paired/train.bad'))]
+    train_data_0['good'] = [line.strip() for line in tqdm(open('/mnt/disks/persist/data/round0/data_paired/train.good'))]
+    train_data_0['id']   = [line.strip() for line in tqdm(open('/mnt/disks/persist/data/round0/data_paired/train.id'))]
     idxs_0 = list(range(len(train_data_0['id'])))
     seed = (111 + int(hashlib.md5(str(out_dir).encode()).hexdigest(), 16)) % (2**31)
     print ('seed', seed)
@@ -66,6 +87,7 @@ def generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, 
     total_size = 30_000_000
     _0_data_repeats  = (total_size//3)//len(idxs_0) +1
     new_data_repeats = (total_size*2//3)//new_data_size +1
+    print(new_data_repeats)
     idxs_0 = (idxs_0 * _0_data_repeats)[:total_size//3]
     idxs_newdata = idxs_newdata * new_data_repeats
     print ('combining all data')
@@ -89,9 +111,9 @@ def generate_paired_data_from_fixer_preds_for_BIFI(pred_dir_prefix, pred_fname, 
           fid.write(train_data['id'][_idx] +'\n')
           fgood.write(train_data['good'][_idx] +'\n')
           fbad.write(train_data['bad'][_idx] +'\n')
-    os.system('cp {} {}'.format('data/round0/data_paired/dev.bad', out_dir))
-    os.system('cp {} {}'.format('data/round0/data_paired/dev.good', out_dir))
-    os.system('cp {} {}'.format('data/round0/data_paired/dev.id', out_dir))
+    os.system('cp {} {}'.format('/mnt/disks/persist/data/round0/data_paired/dev.bad', f'{out_dir}'))
+    os.system('cp {} {}'.format('/mnt/disks/persist/data/round0/data_paired/dev.good', f'{out_dir}'))
+    os.system('cp {} {}'.format('/mnt/disks/persist/data/round0/data_paired/dev.id', f'{out_dir}'))
     print ('done')
 
 
@@ -185,7 +207,7 @@ parser.add_argument('--beam',nargs="+",default=[])
 args = parser.parse_args()
 
 
-data_dir = Path('data')
+data_dir = Path('/mnt/disks/persist/data')
 round_dir = data_dir/args.round_name
 pred_dir_root = Path(args.pred_dir_root) if args.pred_dir_root else round_dir/'orig_bad'
 pred_dir_prefix = str(pred_dir_root/'fairseq_preprocess__orig_bad.')
